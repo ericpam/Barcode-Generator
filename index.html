@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EPD Barcode Generator</title>
+    <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+    <style>
+        /* EPD 標準 UI 框架 [cite: 211, 212, 213] */
+        body { 
+            font-family: "Microsoft JhengHei", sans-serif; 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            padding: 10px; 
+            background-color: #f0f2f5; 
+            margin: 0;
+        }
+        .container { 
+            background: white; 
+            padding: 15px 20px; 
+            border-radius: 8px; 
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1); 
+            width: 95%; 
+            max-width: 650px; 
+            box-sizing: border-box;
+        }
+
+        /* 1. 頁面抬頭：黑粗體 h3 [cite: 211] */
+        h3 { margin: 0 0 10px 0; text-align: center; font-weight: bold; }
+
+        /* 2. 預覽區域：固定 2:1 比例與 RWD 縮放 [cite: 211] */
+        .preview-area { 
+            width: 100%; 
+            max-width: 600px; 
+            aspect-ratio: 2 / 1; 
+            height: auto; 
+            border: 1px solid #ddd; 
+            margin: 0 auto 10px auto; 
+            display: flex; 
+            justify-content: center; 
+            align-items: center; 
+            overflow: hidden; 
+            position: relative;
+        }
+        
+        /* 棋盤格背景指示 [cite: 211] */
+        .bg-checkerboard {
+            background-image: linear-gradient(45deg, #eee 25%, transparent 25%, transparent 75%, #eee 75%, #eee 100%), 
+                              linear-gradient(45deg, #eee 25%, white 25%, white 75%, #eee 75%, #eee 100%);
+            background-size: 20px 20px;
+            background-position: 0 0, 10px 10px;
+        }
+        .bg-white { background-color: #ffffff; background-image: none; }
+
+        #barcodeCanvas { max-width: 100%; max-height: 100%; height: auto; width: auto; }
+
+        /* 右下角背景切換按鈕 [cite: 217] */
+        .bg-toggle-group {
+            position: absolute;
+            bottom: 8px;
+            right: 8px;
+            display: flex;
+            gap: 6px;
+            z-index: 10;
+        }
+        .toggle-btn {
+            width: 24px; height: 24px; border-radius: 50%; border: 1px solid #ccc;
+            cursor: pointer; padding: 0; box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .btn-checker {
+            background-image: linear-gradient(45deg, #ddd 25%, transparent 25%, transparent 75%, #ddd 75%, #ddd 100%), 
+                              linear-gradient(45deg, #ddd 25%, white 25%, white 75%, #ddd 75%, #ddd 100%);
+            background-size: 8px 8px;
+        }
+        .btn-white { background-color: #ffffff; }
+
+        /* 表單樣式 [cite: 212] */
+        .form-group { margin-bottom: 8px; }
+        label { display: block; margin-bottom: 3px; font-size: 13px; font-weight: bold; color: #555; }
+        input, select { 
+            width: 100%; padding: 8px 10px; border: 1px solid #ccc; border-radius: 4px; 
+            box-sizing: border-box; font-size: 14px;
+        }
+
+        .preset-group { display: flex; gap: 8px; margin-bottom: 10px; }
+        .preset-btn { 
+            flex: 1; padding: 8px 5px; background: #fff; border: 1px solid #007bff; 
+            color: #007bff; border-radius: 4px; cursor: pointer; font-size: 12px;
+        }
+        .preset-btn:hover { background: #007bff; color: #fff; }
+        .preset-btn:active { background: #e11d48 !important; color: #ffffff !important; transform: scale(0.98); }
+
+        /* 下載按鈕容器與計數器 [cite: 223, 230] */
+        .download-container {
+            position: relative;
+            margin-top: 10px;
+            width: 100%;
+        }
+        .btn-download { 
+            background-color: #28a745; color: white; border: none; padding: 12px; 
+            border-radius: 4px; cursor: pointer; width: 100%; font-size: 16px; font-weight: bold;
+        }
+        .btn-download:hover { opacity: 0.9; }
+        .btn-download:active { background: #e11d48 !important; color: #ffffff !important; transform: scale(0.98); }
+
+        /* 下載按鈕右下角的 UI 計數器  */
+        #uiCounter {
+            position: absolute;
+            bottom: -15px;
+            right: 0;
+            font-size: 10px;
+            color: #b4b4b4; /* 淡灰色 */
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h3><b>EPD Barcode Generator</b></h3>
+
+    <div id="previewArea" class="preview-area bg-checkerboard">
+        <canvas id="barcodeCanvas"></canvas>
+        <div class="bg-toggle-group">
+            <button class="toggle-btn btn-checker" title="透明背景" onclick="setBg('checker')"></button>
+            <button class="toggle-btn btn-white" title="白色背景" onclick="setBg('white')"></button>
+        </div>
+    </div>
+
+    <label>快速尺寸 (px)</label>
+    <div class="preset-group">
+        <button class="preset-btn" onclick="setPreset(600, 150)">600x150 px</button>
+        <button class="preset-btn" onclick="setPreset(500, 120)">500x120 px</button>
+    </div>
+
+    <div class="form-group">
+        <label>條碼內容 (載具或字串)</label>
+        <input type="text" id="barcodeValue" value="/ABCDEFG" oninput="cleanAndGenerate(this)">
+    </div>
+
+    <div class="form-group">
+        <label>條碼格式</label>
+        <select id="barcodeFormat" onchange="generateBarcode()">
+            <option value="CODE39">載具條碼 (CODE 39)</option>
+            <option value="CODE128">超商會員 (CODE 128B)</option>
+        </select>
+    </div>
+
+    <div style="display: flex; gap: 10px;">
+        <div class="form-group" style="flex: 1;">
+            <label>圖片總寬度 (px)</label>
+            <input type="number" id="imgWidth" value="600" oninput="generateBarcode()">
+        </div>
+        <div class="form-group" style="flex: 1;">
+            <label>圖片總高度 (px)</label>
+            <input type="number" id="imgHeight" value="150" oninput="generateBarcode()">
+        </div>
+    </div>
+
+    <div class="download-container">
+        <button class="btn-download" onclick="downloadBarcode()">下載圖片</button>
+        <div id="uiCounter">COUNTER : 0</div>
+    </div>
+</div>
+
+<canvas id="tempCanvas" style="display:none;"></canvas>
+
+<script>
+    let currentBgMode = 'checker';
+    let downloadCount = 0;
+
+    function setBg(type) {
+        const area = document.getElementById('previewArea');
+        currentBgMode = type;
+        if (type === 'checker') {
+            area.classList.remove('bg-white');
+            area.classList.add('bg-checkerboard');
+        } else {
+            area.classList.remove('bg-checkerboard');
+            area.classList.add('bg-white');
+        }
+        generateBarcode();
+    }
+
+    function cleanAndGenerate(el) {
+        el.value = el.value.replace(/\s+/g, ''); // 自動過濾空白 [cite: 217, 224]
+        generateBarcode();
+    }
+
+    function setPreset(w, h) {
+        document.getElementById('imgWidth').value = w;
+        document.getElementById('imgHeight').value = h;
+        generateBarcode();
+    }
+
+    function generateBarcode() {
+        let val = document.getElementById('barcodeValue').value.trim().replace(/\s+/g, '');
+        const fmt = document.getElementById('barcodeFormat').value;
+        const targetW = parseInt(document.getElementById('imgWidth').value) || 600;
+        const targetH = parseInt(document.getElementById('imgHeight').value) || 150;
+
+        if (!val) return;
+
+        const tempCanvas = document.getElementById('tempCanvas');
+        const finalCanvas = document.getElementById('barcodeCanvas');
+        const ctx = finalCanvas.getContext('2d');
+
+        try {
+            // 使用 JsBarcode 生成原始條碼 [cite: 192]
+            JsBarcode(tempCanvas, val, {
+                format: fmt,
+                displayValue: false, 
+                margin: 0,
+                background: "transparent"
+            });
+
+            // 設定最終預覽/輸出畫布尺寸 [cite: 197]
+            finalCanvas.width = targetW;
+            finalCanvas.height = targetH;
+            ctx.clearRect(0, 0, targetW, targetH);
+            
+            // 下載連動：白色背景填充 [cite: 121, 133]
+            if (currentBgMode === 'white') {
+                ctx.fillStyle = "#ffffff";
+                ctx.fillRect(0, 0, targetW, targetH);
+            }
+            
+            // 繪製條碼：上下切齊，左右 5% 間距 [cite: 205, 224]
+            const padW = targetW * 0.05;
+            const drawW = targetW * 0.9;
+            ctx.drawImage(tempCanvas, padW, 0, drawW, targetH);
+
+        } catch (e) {
+            console.error("Barcode generation failed", e);
+        }
+    }
+
+    function downloadBarcode() {
+        downloadCount++; // 下載次數累加 
+        
+        // 更新 UI 介面上的計數器 
+        document.getElementById('uiCounter').innerText = "COUNTER : " + downloadCount;
+
+        const canvas = document.getElementById("barcodeCanvas");
+        const link = document.createElement('a');
+        const val = document.getElementById('barcodeValue').value;
+        link.download = `EPD_Barcode_${val}_C${downloadCount}.png`;
+        link.href = canvas.toDataURL("image/png");
+        link.click();
+    }
+
+    // 初始化頁面自動生成 
+    window.onload = generateBarcode;
+</script>
+
+</body>
+</html>
